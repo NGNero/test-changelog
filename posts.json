@@ -1,0 +1,21 @@
+{
+ "v": 3,
+ "site": {
+  "tags": [],
+  "description": "Test",
+  "lang": "en",
+  "theme": "auto",
+  "width": "narrow",
+  "dates": "short",
+  "perPage": 10,
+  "logo": "",
+  "social": "",
+  "links": [],
+  "footer": "",
+  "badge": true,
+  "index": true,
+  "domain": "",
+  "name": "Test"
+ },
+ "posts": []
+}
