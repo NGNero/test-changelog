@@ -1,68 +1,104 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="relog-template" content="2">
-<title>Changelog</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@460;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Changelog site pushed to every user's repo. The Worker fills in the lang and theme attributes and the SEO head tags,
+     then writes the result as index.html. Bump "relog-template" after editing: repos update on their next publish.
+     Data: posts.json = { site:{name,description,theme,width,dates,perPage,logo,links,footer,badge,tags,...},
+                          posts:[{id,title,version,tags,excerpt,published_at,updated}] }
+     Post bodies load lazily from posts/<id>.md, a page at a time, so the site stays fast as the changelog grows. -->
+<html lang="en" data-theme="auto"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="relog-template" content="3">
+<title>Test</title>
+<meta name="description" content="Test">
+<link rel="canonical" href="https://NGNero.github.io/test-changelog/">
+<link rel="alternate" type="application/atom+xml" title="Test" href="https://NGNero.github.io/test-changelog/feed.xml">
+<meta property="og:type" content="website"><meta property="og:title" content="Test"><meta property="og:description" content="Test"><meta property="og:url" content="https://NGNero.github.io/test-changelog/">
+<meta name="twitter:card" content="summary">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@450;460;600&display=swap" rel="stylesheet">
+<script>var h=document.documentElement,t=h.dataset.theme;h.classList.toggle('dark',t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches))</script>
 <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-<script>tailwind.config={darkMode:'media',theme:{extend:{fontFamily:{sans:['Inter'],mono:['JetBrains Mono']},colors:{ink:'#0d0f13',paper:'#fbfdff'}}}}</script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']},fontWeight:{small:'450',body:'460',head:'600'},colors:{ink:'#0d0f13',paper:'#fbfdff'}}}}</script>
 </head>
-<body class="bg-paper text-ink dark:bg-ink dark:text-paper font-sans font-[460] antialiased">
-<main class="max-w-2xl mx-auto px-6 py-16">
-<h1 id="t" class="text-3xl font-[600]"></h1>
-<p id="d" class="opacity-70 mt-2"></p>
-<div id="f" class="flex flex-wrap gap-2 mt-8 font-mono text-xs"></div>
+<body class="bg-paper text-ink dark:bg-ink dark:text-paper font-sans font-body antialiased">
+<main id="w" class="max-w-2xl mx-auto px-6 py-16">
+<header class="flex items-start justify-between gap-6">
+  <div class="flex items-center gap-4 min-w-0"><img id="logo" hidden class="h-10 w-10 rounded-[24px] object-cover" alt="">
+    <div class="min-w-0"><h1 id="t" class="text-3xl font-head"></h1><p id="d" class="opacity-70 mt-1"></p></div></div>
+  <nav id="n" class="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm font-head"></nav>
+</header>
+<div class="mt-8 flex flex-wrap items-center gap-2">
+  <input id="s" type="search" placeholder="Search updates" class="min-w-0 flex-1 rounded-[24px] border border-ink/15 dark:border-paper/15 bg-transparent px-4 py-2 text-sm outline-none focus:border-ink/40 dark:focus:border-paper/40">
+</div>
+<div id="f" class="flex flex-wrap gap-2 mt-4 text-xs font-small"></div>
 <div id="l" class="mt-12 space-y-16"></div>
-<button id="m" hidden class="mt-12 rounded-[24px] border border-ink/15 dark:border-paper/15 px-4 py-2 font-mono text-sm">Load more</button>
-<footer class="mt-24 font-mono text-xs opacity-50">Powered by <a class="underline underline-offset-4" href="https://modcore-relog.pages.dev">Relog</a></footer>
+<noscript><p class="mt-12 opacity-70">This changelog needs JavaScript. You can follow it with the <a class="underline underline-offset-4" href="feed.xml">feed</a>.</p></noscript>
+<button id="m" hidden class="mt-12 rounded-[24px] border border-ink/15 dark:border-paper/15 px-4 py-2 text-sm font-head">Load more</button>
+<footer class="mt-24 text-xs font-small opacity-60 flex flex-wrap gap-x-4 gap-y-1">
+  <span id="ft"></span><a class="underline underline-offset-4" href="feed.xml">RSS feed</a><span id="bd"></span>
+</footer>
 </main>
 <script>
 const $ = (i) => document.getElementById(i);
-const esc = (s) => { const x = document.createElement('i'); x.textContent = s; return x.innerHTML; };
-let site = {}, posts = [], tag = '', shown = 0, size = 10;
+const esc = (s) => { const x = document.createElement('i'); x.textContent = s; return x.innerHTML.replace(/"/g, '&quot;'); };
+let site = {}, posts = [], tag = '', term = '', shown = 0;
+const anchor = (p) => (p.version ? 'v' + p.version : p.id);
 const color = (n) => ((site.tags || []).find((x) => x.name === n) || {}).color || '#8a8f98';
-const pill = (n, on) => '<button data-g="' + esc(n) + '" class="rounded-[24px] px-3 py-1" style="' + (on ? 'background:' + color(n) + ';color:#fff' : 'background:' + color(n) + '22;color:' + color(n)) + '">#' + esc(n) + '</button>';
-const body = (p) => p.body !== undefined ? Promise.resolve(p.body) : fetch('posts/' + encodeURIComponent(p.id) + '.md').then((r) => r.ok ? r.text() : '');
+const chip = (n, on) => '<button data-g="' + esc(n) + '" class="rounded-[24px] px-3 py-1" style="' + (on ? 'background:' + color(n) + ';color:#fff' : 'background:' + color(n) + '22;color:' + color(n)) + '">#' + esc(n) + '</button>';
+const match = (p) => (!tag || (p.tags || []).includes(tag)) && (!term || [p.title, p.version, p.excerpt, ...(p.tags || [])].join(' ').toLowerCase().includes(term));
 
-function filters() {
-  const used = [...new Set(posts.flatMap((p) => p.tags || []))];
-  $('f').innerHTML = used.length > 1 ? '<button data-g="" class="rounded-[24px] px-3 py-1 ' + (tag ? 'opacity-60' : 'bg-ink/10 dark:bg-paper/10') + '">All</button>' + used.map((n) => pill(n, n === tag)).join('') : '';
+function when(ts) {
+  const d = new Date(ts * 1000), days = Math.floor((Date.now() - d) / 864e5), lang = document.documentElement.lang;
+  if (site.dates === 'relative' && days < 30) return days < 1 ? 'today' : new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(-days, 'day');
+  return d.toLocaleDateString(lang, site.dates === 'long' ? { dateStyle: 'long' } : { year: 'numeric', month: 'short', day: 'numeric' });
 }
-function more() {
-  const list = posts.filter((p) => !tag || (p.tags || []).includes(tag));
-  list.slice(shown, shown + size).forEach((p) => {
-    const a = document.createElement('article');
-    a.id = 'v' + p.version;
-    a.innerHTML = '<div class="flex flex-wrap items-center gap-3 font-mono text-xs">'
-      + '<a href="#v' + encodeURIComponent(p.version) + '" class="rounded-[24px] bg-[var(--a)] text-white px-3 py-1">v' + esc(p.version) + '</a>'
-      + '<span class="opacity-60">' + new Date(p.published_at * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) + '</span>'
-      + (p.tags || []).map((n) => '<span style="color:' + color(n) + '">#' + esc(n) + '</span>').join('')
-      + '</div><h2 class="text-xl font-[600] mt-3">' + esc(p.title) + '</h2><div data-b class="prose dark:prose-invert max-w-none mt-3"></div>';
-    $('l').appendChild(a);
-    body(p).then((b) => { a.querySelector('[data-b]').innerHTML = DOMPurify.sanitize(marked.parse(b || '')); });
-  });
-  shown += size;
+const body = (p) => (p.body !== undefined ? Promise.resolve(p.body) : fetch('posts/' + encodeURIComponent(p.id) + '.md').then((r) => (r.ok ? r.text() : '')));
+
+function add(p) {
+  const a = document.createElement('article');
+  a.id = anchor(p);
+  const fresh = Date.now() / 1000 - p.published_at < 14 * 864e3;
+  a.innerHTML = '<div class="flex flex-wrap items-center gap-3 text-xs font-small">'
+    + (p.version ? '<a href="#' + encodeURIComponent(anchor(p)) + '" class="rounded-[24px] bg-ink text-paper dark:bg-paper dark:text-ink px-3 py-1 font-head">v' + esc(p.version) + '</a>' : '')
+    + '<span class="opacity-60">' + when(p.published_at) + '</span>'
+    + (fresh ? '<span class="rounded-[24px] bg-ink/10 dark:bg-paper/10 px-2 py-0.5 font-head">New</span>' : '')
+    + (p.tags || []).map((n) => '<span style="color:' + color(n) + '">#' + esc(n) + '</span>').join('')
+    + '<button data-c="' + esc(anchor(p)) + '" class="opacity-60 hover:opacity-100 ml-auto">Copy link</button></div>'
+    + '<h2 class="text-xl font-head mt-3">' + esc(p.title) + '</h2><div data-b class="prose dark:prose-invert max-w-none mt-3"></div>';
+  $('l').appendChild(a);
+  body(p).then((b) => { a.querySelector('[data-b]').innerHTML = DOMPurify.sanitize(marked.parse(b || '')); });
+}
+function more(count) {
+  const list = posts.filter(match), n = count || site.perPage || 10;
+  list.slice(shown, shown + n).forEach(add);
+  shown += n;
   $('m').hidden = shown >= list.length;
-  if (!list.length) $('l').innerHTML = '<p class="opacity-60">No entries yet.</p>';
+  if (!list.length) $('l').innerHTML = '<p class="opacity-60">No updates found.</p>';
 }
-function reset() { $('l').innerHTML = ''; shown = 0; filters(); more(); }
+function reset(count) {
+  $('l').innerHTML = ''; shown = 0;
+  const used = [...new Set(posts.flatMap((p) => p.tags || []))];
+  $('f').innerHTML = used.length > 1 ? '<button data-g="" class="rounded-[24px] px-3 py-1 ' + (tag ? 'opacity-60' : 'bg-ink/10 dark:bg-paper/10') + '">All</button>' + used.map((n) => chip(n, n === tag)).join('') : '';
+  more(count);
+}
 
 fetch('posts.json', { cache: 'no-cache' }).then((r) => r.json()).then((j) => {
   site = j.site || {};
   posts = j.posts || [];
-  document.title = (site.name || 'Changelog') + ' · Changelog';
-  document.documentElement.style.setProperty('--a', site.accent || '#1e5fff');
   $('t').textContent = site.name || 'Changelog';
   $('d').textContent = site.description || '';
-  const h = decodeURIComponent(location.hash.slice(1)); // deep link to an older version
-  const i = posts.findIndex((p) => 'v' + p.version === h);
-  if (i >= size) size = i + 1;
-  reset();
-  size = 10;
+  if (site.logo) { $('logo').src = site.logo; $('logo').hidden = false; }
+  if (site.width === 'wide') $('w').classList.replace('max-w-2xl', 'max-w-4xl');
+  $('n').innerHTML = (site.links || []).map((l) => '<a class="underline underline-offset-4" href="' + esc(l.url) + '">' + esc(l.label) + '</a>').join('');
+  $('ft').textContent = site.footer || '';
+  $('bd').innerHTML = site.badge === false ? '' : 'Powered by <a class="underline underline-offset-4" href="https://modcore-relog.pages.dev">Relog</a>';
+  const h = decodeURIComponent(location.hash.slice(1)); // deep link to an older update
+  const i = posts.findIndex((p) => anchor(p) === h);
+  reset(i >= (site.perPage || 10) ? i + 1 : 0);
   if (h) setTimeout(() => { const e = document.getElementById(h); if (e) e.scrollIntoView(); }, 400);
 });
 $('f').onclick = (e) => { if (e.target.dataset.g !== undefined) { tag = e.target.dataset.g; reset(); } };
-$('m').onclick = more;
+$('s').oninput = (e) => { term = e.target.value.trim().toLowerCase(); reset(); };
+$('m').onclick = () => more();
+$('l').onclick = (e) => { const c = e.target.dataset.c; if (c) navigator.clipboard.writeText(location.href.split('#')[0] + '#' + encodeURIComponent(c)).then(() => { e.target.textContent = 'Copied'; }); };
 </script>
 </body></html>
