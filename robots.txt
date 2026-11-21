@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://NGNero.github.io/test-changelog/sitemap.xml
